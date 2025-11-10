@@ -2,98 +2,107 @@ import discord
 from discord import app_commands
 import os
 from urllib.parse import urlparse, urlunparse
-import requests # Used to call the external API and download images
-import io      # Used to handle image files in memory
 
-# --- API Configuration ---
-# You would need to fill these in after signing up for a service!
-REVERSE_SEARCH_API_URL = "YOUR_SELECTED_API_ENDPOINT"
-API_KEY = os.getenv('REVERSE_IMAGE_API_KEY') 
-# NOTE: A real implementation would also need to upload the image to a stable host first.
+# --- Configuration ---
+# The Google reverse image search base URL
+GOOGLE_SEARCH_URL = "https://www.google.com/searchbyimage?image_url="
 
-# --- Bot Initialization (Same as before) ---
+# Intents are required for reading message content and uploads
 intents = discord.Intents.default()
+# Crucially, enable the message_content intent for reading image uploads
 intents.message_content = True
+
+# --- Bot Initialization ---
+# Create the Bot instance
 client = discord.Client(intents=intents)
+# Create a CommandTree to register application (slash) commands
 tree = app_commands.CommandTree(client)
 
-# --- Core Function to Get Images from API ---
-def get_image_results(image_url: str, num_results: int = 9) -> list[str]:
-    """
-    Placeholder for the actual API call logic.
-    This function must be implemented using your chosen API's library/requests.
-    """
-    print(f"Attempting API call for image: {image_url}")
-    
-    # --- SIMULATED API RESPONSE (REPLACE THIS WITH REAL CODE) ---
-    # In a real scenario, you'd send the image_url to the API and get a JSON list
-    # of result image URLs back.
-    if not API_KEY:
-        print("ERROR: API Key is missing. Cannot proceed.")
-        return []
-        
-    # Example: Using a placeholder list of image URLs from a reliable host (like Imgur)
-    # The actual API would return these URLs based on the reverse search.
-    # Note: These URLs must be permanent and publicly accessible.
-    return [
-        "https://i.imgur.com/image1.jpg", 
-        "https://i.imgur.com/image2.jpg", 
-        # ... up to 9 URLs ...
-    ][:num_results]
+# --- Discord Event Listeners ---
 
+@client.event
+async def on_ready():
+    """Called when the bot successfully connects to Discord."""
+    print(f'Logged in as {client.user} (ID: {client.user.id})')
+    # Sync the slash commands with Discord
+    try:
+        await tree.sync()
+        print("Slash commands synced successfully!")
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
 
 @client.event
 async def on_message(message):
-    if message.author == client.user or not message.attachments:
+    """
+    Called every time a message is sent. 
+    Handles image uploads and generates a reliable Google reverse search link.
+    """
+    # Ignore messages sent by the bot itself
+    if message.author == client.user:
         return
 
-    for attachment in message.attachments:
-        if attachment.content_type and attachment.content_type.startswith('image/'):
-            # 1. Clean the Discord URL for the search API (even if re-hosting is still best)
-            full_url = attachment.url
-            parsed_url = urlparse(full_url)
-            cleaned_url = urlunparse(parsed_url._replace(query='', fragment=''))
+    # Check if the message has an attachment and if it's an image
+    if message.attachments:
+        for attachment in message.attachments:
+            # Check for image type
+            if attachment.content_type and attachment.content_type.startswith('image/'):
+                
+                # 1. Get the full attachment URL
+                full_url = attachment.url
+                
+                # 2. Parse the URL and remove the query string (temporary tokens) 
+                parsed_url = urlparse(full_url)
+                # Reconstruct the URL without the query and fragment for a stable link
+                cleaned_url = urlunparse(parsed_url._replace(query='', fragment=''))
+                
+                # 3. Construct the reliable Google search link
+                search_link = f"{GOOGLE_SEARCH_URL}{cleaned_url}"
 
-            # Send a processing message
-            processing_msg = await message.channel.send("⏳ Performing reverse image search and fetching results... This may take a moment.")
+                # --- Use a Discord Embed for a better, clickable look ---
+                embed = discord.Embed(
+                    title="🔎 Google Reverse Image Search Link",
+                    description="Click the **Title Link** above to search Google for this image.",
+                    color=discord.Color.blue(), 
+                    url=search_link # Makes the title itself clickable
+                )
+                
+                # Show the original image as a thumbnail in the response
+                embed.set_thumbnail(url=attachment.url)
+                
+                embed.add_field(
+                    name="Note",
+                    value="The bot provides the search link. You must click it to see results on Google.",
+                    inline=False
+                )
 
-            # 2. Get the top 9 result image URLs from the external API
-            result_urls = get_image_results(cleaned_url, num_results=9)
-            
-            if not result_urls:
-                await processing_msg.edit(content="❌ Search failed. Could not retrieve image results from the external API (check logs/API key).")
+                # Send the response back to the channel
+                await message.channel.send(embed=embed)
+                
+                # Process only the first image attachment and then stop
                 return
 
-            # 3. Create and send a batch of embeds
-            embeds = []
-            
-            # Discord allows up to 10 embeds per message (we use 9 for 9 images)
-            for i, result_url in enumerate(result_urls[:9]):
-                embed = discord.Embed(
-                    title=f"Result #{i+1}",
-                    url=result_url, # Link the title to the image source (if available)
-                    color=discord.Color.blue()
-                )
-                # Set the found image as the main image of the embed
-                embed.set_image(url=result_url) 
-                embeds.append(embed)
+# --- Slash Command Implementation ---
 
-            # 4. Send the batch of embeds (Up to 10 embeds are allowed per message)
-            await processing_msg.delete() # Delete the processing message
-            await message.channel.send(
-                content=f"🔍 **Found {len(embeds)} Similar Images!** (Click on the image or title to visit the source)",
-                embeds=embeds
-            )
-            return
+@tree.command(name="search", description="Provides a link to search an image on Google.")
+async def search_command(interaction: discord.Interaction):
+    """
+    A simple slash command to inform the user how to use the feature.
+    """
+    await interaction.response.send_message(
+        "👋 To search an image, simply **upload an image directly** to this channel.\n"
+        "The bot will automatically generate a Google reverse image search link for you!",
+        ephemeral=True
+    )
 
-# --- Slash Command and Bot Execution (Same as before) ---
-
-# ... (on_ready and search_command functions)
+# --- Bot Execution ---
 
 if __name__ == "__main__":
+    # Get the token from the environment variable set in your environment
     DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+    
     if not DISCORD_TOKEN:
         print("FATAL: DISCORD_TOKEN environment variable not set.")
+        print("Please set the DISCORD_TOKEN to run the bot.")
     else:
-        # Note: You need to set the REVERSE_IMAGE_API_KEY environment variable too!
+        # Run the bot
         client.run(DISCORD_TOKEN)
