@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 import os
+from urllib.parse import urlparse, urlunparse
 
 # --- Configuration ---
 # The Google reverse image search base URL
@@ -34,7 +35,7 @@ async def on_ready():
 async def on_message(message):
     """
     Called every time a message is sent in a channel the bot can see.
-    This handles the core image upload search logic.
+    Handles image uploads and generates a reliable Google reverse search link.
     """
     # Ignore messages sent by the bot itself
     if message.author == client.user:
@@ -44,21 +45,41 @@ async def on_message(message):
     if message.attachments:
         for attachment in message.attachments:
             # Simple check for common image file types
-            if attachment.content_type.startswith('image/'):
-                # Get the direct URL of the uploaded image
-                image_url = attachment.url
+            if attachment.content_type and attachment.content_type.startswith('image/'):
                 
-                # Construct the Google search link
-                search_link = f"{GOOGLE_SEARCH_URL}{image_url}"
+                # 1. Get the full attachment URL with temporary tokens
+                full_url = attachment.url
+                
+                # 2. Parse the URL and remove the query string (tokens) 🛠️ FIX
+                parsed_url = urlparse(full_url)
+                # Reconstruct the URL without the query and fragment for a stable link
+                cleaned_url = urlunparse(parsed_url._replace(query='', fragment=''))
+                
+                # 3. Construct the reliable Google search link
+                search_link = f"{GOOGLE_SEARCH_URL}{cleaned_url}"
+
+                # --- Use a Discord Embed for a better, clickable look ---
+                embed = discord.Embed(
+                    title="🔎 Google Reverse Image Search Link",
+                    description="Click the **Title Link** above to search Google for this image.",
+                    color=discord.Color.blue(), 
+                    url=search_link # Makes the title itself clickable
+                )
+                
+                # Show the original image as a thumbnail in the response
+                embed.set_thumbnail(url=attachment.url)
+                
+                embed.add_field(
+                    name="Status",
+                    value="Link generated using a **stable** version of the image URL.",
+                    inline=False
+                )
 
                 # Send the response back to the channel
-                await message.channel.send(
-                    f"🔎 **Image Upload Detected!**\n"
-                    f"Click the link below to search Google for this image:\n"
-                    f"**{search_link}**"
-                )
+                await message.channel.send(embed=embed)
+                
                 # Process only the first image attachment and then stop
-                return 
+                return
 
 # --- Slash Command Implementation ---
 
@@ -76,11 +97,12 @@ async def search_command(interaction: discord.Interaction):
 # --- Bot Execution ---
 
 if __name__ == "__main__":
-    # Get the token from the environment variable set in Railway
+    # Get the token from the environment variable (e.g., set in Railway or your local environment)
     DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
     
     if not DISCORD_TOKEN:
         print("FATAL: DISCORD_TOKEN environment variable not set.")
+        print("Please set the DISCORD_TOKEN to run the bot.")
     else:
         # Run the bot
         client.run(DISCORD_TOKEN)
