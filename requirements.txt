@@ -3,3 +3,5 @@ google-cloud-vision
 aiohttp
 python-dotenv
 aiofiles
+pathlib
+requests
