@@ -16,20 +16,17 @@ from google.api_core.exceptions import GoogleAPIError
 # Load .env (optional, helps local testing)
 load_dotenv()
 
-# Your Railway variable for the Discord token is named "search"
-DISCORD_TOKEN = os.getenv("search")
+# ✅ Your Discord bot token variable
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-# Optional: Google credentials
-# Railway tip — set GOOGLE_APPLICATION_CREDENTIALS to your JSON key path,
-# or paste the JSON content into a var and load from it programmatically if needed.
 if not DISCORD_TOKEN:
-    raise RuntimeError("❌ Missing environment variable: 'search' (your Discord bot token)")
+    raise RuntimeError("❌ Missing environment variable: 'DISCORD_TOKEN' (your Discord bot token)")
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
-# Create the Google Vision client (it uses GOOGLE_APPLICATION_CREDENTIALS automatically)
+# Create the Google Vision client (uses GOOGLE_APPLICATION_CREDENTIALS automatically)
 vision_client = vision.ImageAnnotatorClient()
 
 
